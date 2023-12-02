@@ -2,6 +2,8 @@ package com.tungsten.fclcore.mod;
 
 import static com.tungsten.fclcore.util.io.NetworkUtils.encodeLocation;
 
+import com.tungsten.fclcore.mod.curse.CurseForgeRemoteModRepository;
+import com.tungsten.fclcore.mod.modrinth.ModrinthRemoteModRepository;
 import com.tungsten.fclcore.task.FileDownloadTask;
 
 import java.io.IOException;
@@ -11,6 +13,19 @@ import java.util.Map;
 import java.util.stream.Stream;
 
 public class RemoteMod {
+    private static RemoteMod EMPTY = null;
+
+    public static void registerEmptyRemoteMod(RemoteMod empty) {
+        EMPTY = empty;
+    }
+
+    public static RemoteMod getEmptyRemoteMod() {
+        if (EMPTY == null) {
+            throw new NullPointerException();
+        }
+        return EMPTY;
+    }
+
     private final String slug;
     private final String author;
     private final String title;
@@ -70,8 +85,18 @@ public class RemoteMod {
     }
 
     public enum Type {
-        CURSEFORGE,
-        MODRINTH
+        CURSEFORGE(CurseForgeRemoteModRepository.MODS),
+        MODRINTH(ModrinthRemoteModRepository.MODS);
+
+        private final RemoteModRepository remoteModRepository;
+
+        public RemoteModRepository getRemoteModRepository() {
+            return this.remoteModRepository;
+        }
+
+        Type(RemoteModRepository remoteModRepository) {
+            this.remoteModRepository = remoteModRepository;
+        }
     }
 
     public interface IMod {
@@ -184,7 +209,7 @@ public class RemoteMod {
         }
 
         public String getUrl() {
-            return encodeLocation (url);
+            return encodeLocation(url);
         }
 
         public String getFilename() {

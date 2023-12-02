@@ -1,15 +1,22 @@
 package com.tungsten.fclauncher.bridge;
 
+import android.app.Activity;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Handler;
+import android.util.Log;
 import android.view.Surface;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.core.content.FileProvider;
 
-import com.tungsten.fclauncher.FCLPath;
+import com.tungsten.fclauncher.utils.FCLPath;
 
+import java.io.File;
 import java.io.Serializable;
 
 public class FCLBridge implements Serializable {
@@ -58,21 +65,24 @@ public class FCLBridge implements Serializable {
     private String controller = "Default";
     private String gameDir;
     private String logPath;
+    private String renderer;
+    private String java;
+    private Surface surface;
+    private Handler handler;
     private Thread thread;
     private Thread fclLogThread;
-    private boolean isLogPipeReady = false;
 
     static {
         System.loadLibrary("xhook");
         System.loadLibrary("fcl");
-        System.loadLibrary("glfw");
+        System.loadLibrary("fcl_awt");
     }
 
     public FCLBridge() {
     }
 
     public native void setFCLNativeWindow(Surface surface);
-    public native void redirectStdio(String path);
+    public native int redirectStdio(String path);
     public native int chdir(String path);
     public native void setenv(String key, String value);
     public native int dlopen(String path);
@@ -99,25 +109,18 @@ public class FCLBridge implements Serializable {
     }
 
     public void execute(Surface surface, FCLBridgeCallback callback) {
+        this.handler = new Handler();
         this.callback = callback;
-
-        fclLogThread = new Thread(() -> redirectStdio(getLogPath()));
+        this.surface = surface;
+        fclLogThread = new Thread(() -> {
+            receiveLog("invoke redirectStdio");
+            int errorCode = redirectStdio(getLogPath());
+            if (errorCode != 0) {
+                receiveLog("Can't exec redirectStdio! Error code: " + errorCode);
+            }
+        });
         fclLogThread.setName("FCLLogThread");
         fclLogThread.start();
-        while (!isLogPipeReady) {
-            // wait for redirectStdio
-        }
-        setFCLBridge(this);
-        // set graphic output and event pipe
-        if (surface != null) {
-            setFCLNativeWindow(surface);
-        }
-        setEventPipe();
-
-        // start
-        if (thread != null) {
-            thread.start();
-        }
     }
 
     public void pushEventMouseButton(int button, boolean press) {
@@ -175,6 +178,32 @@ public class FCLBridge implements Serializable {
         return item.getText().toString();
     }
 
+    public static void openLink(final String link) {
+        Context context = FCLPath.CONTEXT;
+        ((Activity) context).runOnUiThread(() -> {
+            try {
+                Intent intent = new Intent(Intent.ACTION_VIEW);
+                String targetLink = link;
+                if (targetLink.startsWith("file://")) {
+                    targetLink = targetLink.replace("file://", "");
+                } else if (targetLink.startsWith("file:")) {
+                    targetLink = targetLink.replace("file:", "");
+                }
+                Uri uri;
+                if (targetLink.startsWith("http")) {
+                    uri = Uri.parse(targetLink);
+                } else {
+                    //can`t get authority by R.string.file_browser_provider
+                    uri = FileProvider.getUriForFile(context, "com.tungsten.fcl.provider", new File(targetLink));
+                }
+                intent.setDataAndType(uri, "*/*");
+                context.startActivity(intent);
+            } catch (Exception e) {
+                Log.e("openLink error", e.toString());
+            }
+        });
+    }
+
     public void setScaleFactor(double scaleFactor) {
         this.scaleFactor = scaleFactor;
     }
@@ -200,6 +229,22 @@ public class FCLBridge implements Serializable {
         return gameDir;
     }
 
+    public void setRenderer(String renderer) {
+        this.renderer = renderer;
+    }
+
+    public String getRenderer() {
+        return renderer;
+    }
+
+    public void setJava(String java) {
+        this.java = java;
+    }
+
+    public String getJava() {
+        return java;
+    }
+
     @NonNull
     public String getLogPath() {
         return logPath;
@@ -210,7 +255,23 @@ public class FCLBridge implements Serializable {
     }
 
     public void setLogPipeReady() {
-        this.isLogPipeReady = true;
+        receiveLog("invoke setLogPipeReady");
+        handler.post(() -> {
+            receiveLog("invoke setFCLBridge");
+            setFCLBridge(this);
+            // set graphic output and event pipe
+            if (surface != null) {
+                receiveLog("invoke setFCLNativeWindow");
+                setFCLNativeWindow(surface);
+            }
+            receiveLog("invoke setEventPipe");
+            setEventPipe();
+
+            // start
+            if (thread != null) {
+                thread.start();
+            }
+        });
     }
 
     public void receiveLog(String log) {

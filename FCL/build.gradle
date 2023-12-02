@@ -1,5 +1,6 @@
 plugins {
     id 'com.android.application'
+    id "org.hidetake.ssh" version "2.11.2"
 }
 
 android {
@@ -10,8 +11,8 @@ android {
         applicationId "com.tungsten.fcl"
         minSdk 26
         targetSdk 33
-        versionCode 1
-        versionName "1.0.0"
+        versionCode 12
+        versionName "1.1.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -21,10 +22,66 @@ android {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
+        configureEach {
+            resValue "string", "app_version", "${defaultConfig.versionName}"
+        }
+    }
+    applicationVariants.configureEach { variant ->
+        variant.outputs.configureEach { output ->
+            outputFileName = "FCL-${variant.buildType.name}-${defaultConfig.versionName}.apk"
+        }
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
+    }
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging true
+        }
+    }
+}
+
+tasks.whenTaskAdded { Task task ->
+    if (task.name.contentEquals("assembleRelease")) {
+        task.dependsOn(uploadMap)
+    }
+}
+
+tasks.register('updateMap') {
+    doLast {
+        def list = []
+        new File("${rootDir}/version_map.json").withReader("UTF-8") { reader ->
+            reader.eachLine {
+                if (it.contains('versionCode')) {
+                    it = it.replaceAll('[0-9]+', "${android.defaultConfig.versionCode}")
+                } else if (it.contains("versionName")) {
+                    it = it.replaceAll(': ".+', ": \"${android.defaultConfig.versionName}\",")
+                } else if (it.contains("date")) {
+                    def date = new Date().format("yyyy.MM.dd", TimeZone.getTimeZone("UTC"))
+                    it = it.replaceAll(': ".+', ": \"${date}\",")
+                } else if (it.contains("url")) {
+                    it = it.replaceAll('download/.+"', "download/${android.defaultConfig.versionName}/FCL-release-${android.defaultConfig.versionName}.apk\"")
+                }
+                list.add(it + "\n")
+            }
+        }
+        new File("${rootDir}/version_map.json").withWriter("UTF-8") { writer ->
+            list.each {
+                writer.write(it)
+            }
+        }
+    }
+}
+
+task uploadMap(dependsOn:'updateMap') {
+    doLast {
+        ssh.run {
+            session(remotes.debugServer) {
+                File file = file "${rootDir}/version_map.json"
+                put from: file.getAbsolutePath(), into: "/www/wwwroot/FCLApi/public/files"
+            }
+        }
     }
 }
 
@@ -34,13 +91,29 @@ dependencies {
     implementation project(path: ':FCLLibrary')
     implementation project(path: ':FCLauncher')
     implementation 'org.nanohttpd:nanohttpd:2.3.1'
-    implementation 'org.apache.commons:commons-compress:1.21'
-    implementation 'org.tukaani:xz:1.8'
-    implementation 'com.google.code.gson:gson:2.10'
-    implementation 'androidx.appcompat:appcompat:1.6.0'
-    implementation 'com.google.android.material:material:1.7.0'
+    implementation 'org.apache.commons:commons-compress:1.23.0'
+    implementation 'org.tukaani:xz:1.9'
+    implementation 'com.github.steveice10:opennbt:1.5'
+    implementation 'com.google.code.gson:gson:2.10.1'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.9.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+}
+
+ssh.settings {
+    knownHosts = allowAnyHosts
+}
+
+remotes {
+    Properties prop = new Properties()
+    prop.load(new FileInputStream("${rootDir}/local.properties"))
+    debugServer {
+        host = prop.getProperty("sftp.host")
+        port = prop.getProperty("sftp.port").toInteger()
+        user = prop.getProperty("sftp.username")
+        password = prop.getProperty("sftp.password")
+    }
 }

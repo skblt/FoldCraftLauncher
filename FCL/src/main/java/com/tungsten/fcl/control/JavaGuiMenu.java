@@ -1,6 +1,5 @@
 package com.tungsten.fcl.control;
 
-import android.view.KeyEvent;
 import android.view.View;
 
 import androidx.annotation.Nullable;
@@ -55,11 +54,6 @@ public class JavaGuiMenu implements MenuCallback {
 
     @Override
     public void onResume() {
-
-    }
-
-    @Override
-    public void onBackPressed() {
 
     }
 

@@ -4,7 +4,8 @@ import android.content.Context;
 
 import com.tungsten.fcl.R;
 import com.tungsten.fcl.util.RuntimeUtils;
-import com.tungsten.fclauncher.FCLPath;
+import com.tungsten.fclauncher.FCLConfig;
+import com.tungsten.fclauncher.utils.FCLPath;
 import com.tungsten.fclauncher.bridge.FCLBridge;
 import com.tungsten.fclcore.auth.AuthInfo;
 import com.tungsten.fclcore.game.GameRepository;
@@ -13,7 +14,7 @@ import com.tungsten.fclcore.game.Version;
 import com.tungsten.fclcore.launch.DefaultLauncher;
 import com.tungsten.fclcore.util.Logging;
 import com.tungsten.fclcore.util.io.FileUtils;
-import com.tungsten.fcllibrary.component.LocaleUtils;
+import com.tungsten.fcllibrary.util.LocaleUtils;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -52,8 +53,10 @@ public final class FCLGameLauncher extends DefaultLauncher {
             Logging.LOG.log(Level.WARNING, "Unable to disable forge animation", e);
         }
 
-        if (optionsFile.exists())
+        if (optionsFile.exists()) {
+            modifyOptions(optionsFile, false);
             return;
+        }
         if (configFolder.isDirectory())
             if (findFiles(configFolder, "options.txt"))
                 return;
@@ -63,26 +66,70 @@ public final class FCLGameLauncher extends DefaultLauncher {
             Logging.LOG.log(Level.WARNING, "Unable to generate options.txt", e);
         }
 
-        // TODO: Dirty implementation here
-        if (!LocaleUtils.getSystemLocale().getDisplayName().equals(Locale.CHINA.getDisplayName())) {
+        modifyOptions(optionsFile, true);
+    }
+
+    private void modifyOptions(File optionsFile, boolean overwrite) {
+        StringBuilder str = new StringBuilder();
+        try (BufferedReader bfr = new BufferedReader(new FileReader(optionsFile))) {
+            String line;
+            while ((line = bfr.readLine()) != null) {
+                if (line.contains("lang:") && LocaleUtils.isChinese(context) && overwrite) {
+                    str.append("lang:zh_CN\n");
+                } else if (line.contains("forceUnicodeFont:")) {
+                    str.append("forceUnicodeFont:false\n");
+                } else {
+                    str.append(line).append("\n");
+                }
+            }
+        } catch (Exception e) {
+            Logging.LOG.log(Level.WARNING, "Unable to read options.txt.", e);
+        }
+        if (!"".equals(str.toString())) {
+            try (FileWriter fw = new FileWriter(optionsFile)) {
+                fw.write(str.toString());
+            } catch (IOException e) {
+                Logging.LOG.log(Level.WARNING, "Unable to write options.txt.", e);
+            }
+        }
+    }
+
+    private void modifyIfConfigDetected(String config, String option, String replacement, boolean overwrite, FCLConfig.Renderer... renderers) {
+        boolean patch = false;
+        if (renderers.length == 0) {
+            patch = true;
+        } else {
+            for (FCLConfig.Renderer renderer : renderers) {
+                if (renderer == options.getRenderer()) {
+                    patch = true;
+                    break;
+                }
+            }
+        }
+        File configFolder = new File(repository.getRunDirectory(version.getId()), "config");
+        if (patch && configFolder.exists() && new File(configFolder, config).exists()) {
+            File configFile = new File(configFolder, config);
             StringBuilder str = new StringBuilder();
-            try (BufferedReader bfr = new BufferedReader(new FileReader(optionsFile))) {
+            try (BufferedReader bfr = new BufferedReader(new FileReader(configFile))) {
                 String line;
                 while ((line = bfr.readLine()) != null) {
-                    if (line.contains("lang:")) {
-                        str.append("lang:en_us\n");
+                    if (overwrite && line.contains(option)) {
+                        str.append(replacement).append("\n");
                     } else {
                         str.append(line).append("\n");
                     }
                 }
+                if (!overwrite && !str.toString().contains(replacement)) {
+                    str.append(replacement);
+                }
             } catch (Exception e) {
-                Logging.LOG.log(Level.WARNING, "Unable to read options.txt.", e);
+                Logging.LOG.log(Level.WARNING, "Unable to read " + config + ".", e);
             }
             if (!"".equals(str.toString())) {
-                try (FileWriter fw = new FileWriter(optionsFile)) {
+                try (FileWriter fw = new FileWriter(configFile)) {
                     fw.write(str.toString());
                 } catch (IOException e) {
-                    Logging.LOG.log(Level.WARNING, "Unable to write options.txt.", e);
+                    Logging.LOG.log(Level.WARNING, "Unable to write " + config + ".", e);
                 }
             }
         }
@@ -104,7 +151,26 @@ public final class FCLGameLauncher extends DefaultLauncher {
 
     @Override
     public FCLBridge launch() throws IOException, InterruptedException {
+        FileUtils.deleteDirectoryQuietly(new File("/data/user_de/0/com.tungsten.fcl/code_cache"));
         generateOptionsTxt();
+        // Sodium
+        modifyIfConfigDetected("sodium-mixins.properties", "", "mixin.features.chunk_rendering=false", false, FCLConfig.Renderer.RENDERER_GL4ES, FCLConfig.Renderer.RENDERER_VGPU);
+        // Rubidium
+        modifyIfConfigDetected("rubidium-mixins.properties", "", "mixin.features.chunk_rendering=false", false, FCLConfig.Renderer.RENDERER_GL4ES, FCLConfig.Renderer.RENDERER_VGPU);
+        // DraconicEvolution
+        String config = "brandon3055/DraconicEvolution.cfg";
+        modifyIfConfigDetected(config, "B:useShaders=", "B:useShaders=false", true, FCLConfig.Renderer.RENDERER_GL4ES, FCLConfig.Renderer.RENDERER_VGPU);
+        modifyIfConfigDetected(config, "B:\"crystalShaders\"=", "B:\"crystalShaders\"=false", true, FCLConfig.Renderer.RENDERER_GL4ES, FCLConfig.Renderer.RENDERER_VGPU);
+        modifyIfConfigDetected(config, "B:\"reactorShaders\"=", "B:\"reactorShaders\"=false", true, FCLConfig.Renderer.RENDERER_GL4ES, FCLConfig.Renderer.RENDERER_VGPU);
+        modifyIfConfigDetected(config, "B:\"guardianShaders\"=", "B:\"guardianShaders\"=false", true, FCLConfig.Renderer.RENDERER_GL4ES, FCLConfig.Renderer.RENDERER_VGPU);
+        modifyIfConfigDetected(config, "B:\"otherShaders\"=", "B:\"otherShaders\"=false", true, FCLConfig.Renderer.RENDERER_GL4ES, FCLConfig.Renderer.RENDERER_VGPU);
+        // Pixelmon
+        modifyIfConfigDetected("pixelmon/config.yml", "use-discord-rich-presence:", "use-discord-rich-presence: false", true);
+        // ImmersiveEngineering
+        modifyIfConfigDetected("immersiveengineering-client.toml", "stencilBufferEnabled", "stencilBufferEnabled = false", true, FCLConfig.Renderer.RENDERER_GL4ES, FCLConfig.Renderer.RENDERER_VGPU);
+        // Create
+        modifyIfConfigDetected("flywheel-client.toml", "enabled", "enabled = false", true, FCLConfig.Renderer.RENDERER_GL4ES);
+        modifyIfConfigDetected("flywheel-client.toml", "backend =", "backend = \"OFF\"", true, FCLConfig.Renderer.RENDERER_GL4ES);
         return super.launch();
     }
 }

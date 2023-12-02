@@ -14,7 +14,7 @@ import com.tungsten.fcl.R;
 import com.tungsten.fcl.setting.Profile;
 import com.tungsten.fcl.setting.VersionSetting;
 import com.tungsten.fcl.util.AndroidUtils;
-import com.tungsten.fclauncher.FCLPath;
+import com.tungsten.fclauncher.utils.FCLPath;
 import com.tungsten.fclcore.download.LibraryAnalyzer;
 import com.tungsten.fclcore.event.Event;
 import com.tungsten.fclcore.event.EventManager;
@@ -23,6 +23,7 @@ import com.tungsten.fclcore.game.GameDirectoryType;
 import com.tungsten.fclcore.game.JavaVersion;
 import com.tungsten.fclcore.game.LaunchOptions;
 import com.tungsten.fclcore.game.Version;
+import com.tungsten.fclcore.mod.ModAdviser;
 import com.tungsten.fclcore.mod.Modpack;
 import com.tungsten.fclcore.mod.ModpackConfiguration;
 import com.tungsten.fclcore.mod.ModpackProvider;
@@ -158,17 +159,7 @@ public class FCLGameRepository extends DefaultGameRepository {
         File srcGameDir = getRunDirectory(srcId);
         File dstGameDir = getRunDirectory(dstId);
 
-        List<String> blackList = new ArrayList<>(Arrays.asList(
-                "regex:(.*?)\\.log",
-                "usernamecache.json", "usercache.json", // Minecraft
-                "launcher_profiles.json", "launcher.pack.lzma", // Minecraft Launcher
-                "backup", "pack.json", "launcher.jar", "cache", // FCL
-                ".curseclient", // Curse
-                ".fabric", ".mixin.out", // Fabric
-                "jars", "logs", "versions", "assets", "libraries", "crash-reports", "NVIDIA", "AMD", "screenshots", "natives", "native", "$native", "server-resource-packs", // Minecraft
-                "downloads", // Curse
-                "asm", "backups", "TCNodeTracker", "CustomDISkins", "data", "CustomSkinLoader/caches" // Mods
-        ));
+        List<String> blackList = new ArrayList<>(ModAdviser.MODPACK_BLACK_LIST);
         blackList.add(srcId + ".jar");
         blackList.add(srcId + ".json");
         if (!copySaves)
@@ -324,8 +315,8 @@ public class FCLGameRepository extends DefaultGameRepository {
                 .setVersionName(version)
                 .setProfileName(FCLPath.CONTEXT.getString(R.string.app_name))
                 .setGameArguments(StringUtils.tokenize(vs.getMinecraftArgs()))
-                .setJavaArguments(StringUtils.tokenize(vs.getJavaArgs()))
-                .setMaxMemory((int)(getAllocatedMemory(
+                .setOverrideJavaArguments(StringUtils.tokenize(vs.getJavaArgs()))
+                .setMaxMemory((int) (getAllocatedMemory(
                         vs.getMaxMemory() * 1024L * 1024L,
                         MemoryUtils.getFreeDeviceMemory(FCLPath.CONTEXT),
                         vs.isAutoMemory()
@@ -335,7 +326,6 @@ public class FCLGameRepository extends DefaultGameRepository {
                 .setWidth((int) (AndroidUtils.getScreenWidth(FCLApplication.getCurrentActivity()) * vs.getScaleFactor()))
                 .setHeight((int) (AndroidUtils.getScreenHeight(FCLApplication.getCurrentActivity()) * vs.getScaleFactor()))
                 .setServerIp(vs.getServerIp())
-                .setProcessPriority(vs.getProcessPriority())
                 .setJavaAgents(javaAgents)
                 .setBEGesture(vs.isBeGesture())
                 .setRenderer(vs.getRenderer());
@@ -351,6 +341,9 @@ public class FCLGameRepository extends DefaultGameRepository {
                 e.printStackTrace();
             }
         }
+
+        if (vs.isAutoMemory() && builder.getJavaArguments().stream().anyMatch(it -> it.startsWith("-Xmx")))
+            builder.setMaxMemory(null);
 
         return builder.create();
     }
@@ -409,7 +402,7 @@ public class FCLGameRepository extends DefaultGameRepository {
 
     public static long getAllocatedMemory(long minimum, long available, boolean auto) {
         if (auto) {
-            available -= 256 * 1024 * 1024;
+            available -= 384 * 1024 * 1024; // Reserve 384MiB memory for off-heap memory and HMCL itself
             if (available <= 0) {
                 return minimum;
             }
@@ -418,7 +411,7 @@ public class FCLGameRepository extends DefaultGameRepository {
             final long suggested = Math.min(available <= threshold
                             ? (long) (available * 0.8)
                             : (long) (threshold * 0.8 + (available - threshold) * 0.2),
-                    32736L * 1024 * 1024); // Limit the maximum suggested memory to ensure that compressed oops are available
+                    16384L * 1024 * 1024);
             return Math.max(minimum, suggested);
         } else {
             return minimum;

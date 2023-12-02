@@ -23,18 +23,22 @@ import com.tungsten.fcl.setting.Profile;
 import com.tungsten.fcl.setting.Profiles;
 import com.tungsten.fcl.ui.UIManager;
 import com.tungsten.fcl.ui.version.Versions;
+import com.tungsten.fcl.upgrade.UpdateChecker;
 import com.tungsten.fcl.util.AndroidUtils;
 import com.tungsten.fcl.util.FXUtils;
 import com.tungsten.fcl.util.WeakListenerHolder;
 import com.tungsten.fclcore.auth.Account;
 import com.tungsten.fclcore.auth.authlibinjector.AuthlibInjectorAccount;
 import com.tungsten.fclcore.auth.authlibinjector.AuthlibInjectorServer;
+import com.tungsten.fclcore.auth.offline.Skin;
 import com.tungsten.fclcore.auth.yggdrasil.TextureModel;
 import com.tungsten.fclcore.download.LibraryAnalyzer;
 import com.tungsten.fclcore.event.Event;
 import com.tungsten.fclcore.fakefx.beans.property.ObjectProperty;
 import com.tungsten.fclcore.fakefx.beans.property.SimpleObjectProperty;
 import com.tungsten.fclcore.fakefx.beans.value.ObservableValue;
+import com.tungsten.fclcore.mod.RemoteMod;
+import com.tungsten.fclcore.mod.RemoteModRepository;
 import com.tungsten.fclcore.task.Schedulers;
 import com.tungsten.fclcore.util.Logging;
 import com.tungsten.fclcore.util.fakefx.BindingMapping;
@@ -49,8 +53,11 @@ import com.tungsten.fcllibrary.component.view.FCLUILayout;
 import com.tungsten.fcllibrary.util.ConvertUtils;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Consumer;
 import java.util.logging.Level;
+import java.util.stream.Stream;
 
 public class MainActivity extends FCLActivity implements FCLMenuView.OnSelectListener, View.OnClickListener {
 
@@ -101,6 +108,43 @@ public class MainActivity extends FCLActivity implements FCLMenuView.OnSelectLis
 
         titleView = findViewById(R.id.title);
 
+        Skin.registerDefaultSkinLoader((type) -> {
+            switch (type) {
+                case ALEX:
+                    return Skin.class.getResourceAsStream("/assets/img/alex.png");
+                case ARI:
+                    return Skin.class.getResourceAsStream("/assets/img/ari.png");
+                case EFE:
+                    return Skin.class.getResourceAsStream("/assets/img/efe.png");
+                case KAI:
+                    return Skin.class.getResourceAsStream("/assets/img/kai.png");
+                case MAKENA:
+                    return Skin.class.getResourceAsStream("/assets/img/makena.png");
+                case NOOR:
+                    return Skin.class.getResourceAsStream("/assets/img/noor.png");
+                case STEVE:
+                    return Skin.class.getResourceAsStream("/assets/img/steve.png");
+                case SUNNY:
+                    return Skin.class.getResourceAsStream("/assets/img/sunny.png");
+                case ZURI:
+                    return Skin.class.getResourceAsStream("/assets/img/zuri.png");
+                default:
+                    return null;
+            }
+        });
+
+        RemoteMod.registerEmptyRemoteMod(new RemoteMod("", "", getString(R.string.mods_broken_dependency_title), getString(R.string.mods_broken_dependency_desc), new ArrayList<>(), "", "", new RemoteMod.IMod() {
+            @Override
+            public List<RemoteMod> loadDependencies(RemoteModRepository modRepository) throws IOException {
+                throw new IOException();
+            }
+
+            @Override
+            public Stream<RemoteMod.Version> loadVersions(RemoteModRepository modRepository) throws IOException {
+                throw new IOException();
+            }
+        }));
+
         try {
             ConfigHolder.init();
         } catch (IOException e) {
@@ -148,6 +192,8 @@ public class MainActivity extends FCLActivity implements FCLMenuView.OnSelectLis
 
                 setupAccountDisplay();
                 setupVersionDisplay();
+
+                UpdateChecker.getInstance().checkAuto(this).start();
             });
         });
     }
@@ -281,11 +327,21 @@ public class MainActivity extends FCLActivity implements FCLMenuView.OnSelectLis
                 } else {
                     accountName.stringProperty().bind(BindingMapping.of(account, Account::getCharacter));
                     accountHint.stringProperty().bind(accountSubtitle(MainActivity.this, account));
+                    avatar.imageProperty().unbind();
                     avatar.imageProperty().bind(TexturesLoader.avatarBinding(account, ConvertUtils.dip2px(MainActivity.this, 30)));
                 }
             }
         };
         currentAccount.bind(Accounts.selectedAccountProperty());
+    }
+
+    public void refreshAvatar(Account account) {
+        Schedulers.androidUIThread().execute(() -> {
+            if (currentAccount.get() == account) {
+                avatar.imageProperty().unbind();
+                avatar.imageProperty().bind(TexturesLoader.avatarBinding(currentAccount.get(), ConvertUtils.dip2px(MainActivity.this, 30)));
+            }
+        });
     }
 
     @SuppressLint("UseCompatLoadingForDrawables")

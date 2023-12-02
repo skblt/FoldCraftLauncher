@@ -1,9 +1,7 @@
 package com.tungsten.fcl.setting;
 
-import static com.tungsten.fcl.setting.ConfigHolder.config;
-
 import com.tungsten.fcl.game.FCLCacheRepository;
-import com.tungsten.fclcore.fakefx.beans.binding.Bindings;
+import com.tungsten.fclauncher.utils.FCLPath;
 import com.tungsten.fclcore.util.CacheRepository;
 
 public final class Settings {
@@ -32,7 +30,7 @@ public final class Settings {
         AuthlibInjectorServers.init();
 
         CacheRepository.setInstance(FCLCacheRepository.REPOSITORY);
-        FCLCacheRepository.REPOSITORY.directoryProperty().bind(Bindings.createStringBinding(() -> config().getCommonDirectory(), config().commonDirectoryProperty()));
+        FCLCacheRepository.REPOSITORY.setDirectory(FCLPath.CACHE_DIR);
     }
 
 }

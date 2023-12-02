@@ -1,24 +1,28 @@
 package com.tungsten.fcl.control;
 
-import android.graphics.Color;
-import android.graphics.drawable.ColorDrawable;
-import android.os.Build;
-import android.view.InputDevice;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.RelativeLayout;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.drawerlayout.widget.DrawerLayout;
 
 import com.google.gson.GsonBuilder;
+import com.tungsten.fcl.BuildConfig;
 import com.tungsten.fcl.R;
 import com.tungsten.fcl.activity.JVMCrashActivity;
 import com.tungsten.fcl.control.data.ButtonStyles;
+import com.tungsten.fcl.control.data.ControlButtonData;
+import com.tungsten.fcl.control.data.ControlDirectionData;
 import com.tungsten.fcl.control.data.ControlViewGroup;
+import com.tungsten.fcl.control.data.CustomControl;
 import com.tungsten.fcl.control.data.DirectionStyles;
+import com.tungsten.fcl.control.data.QuickInputTexts;
 import com.tungsten.fcl.control.keyboard.LwjglCharSender;
 import com.tungsten.fcl.control.keyboard.TouchCharInput;
 import com.tungsten.fcl.control.view.GameItemBar;
@@ -29,8 +33,8 @@ import com.tungsten.fcl.setting.Controller;
 import com.tungsten.fcl.setting.Controllers;
 import com.tungsten.fcl.setting.MenuSetting;
 import com.tungsten.fcl.util.FXUtils;
-import com.tungsten.fclauncher.FCLKeycodes;
-import com.tungsten.fclauncher.FCLPath;
+import com.tungsten.fclauncher.keycodes.FCLKeycodes;
+import com.tungsten.fclauncher.utils.FCLPath;
 import com.tungsten.fclauncher.bridge.FCLBridge;
 import com.tungsten.fclauncher.bridge.FCLBridgeCallback;
 import com.tungsten.fclcore.fakefx.beans.binding.Bindings;
@@ -40,6 +44,7 @@ import com.tungsten.fclcore.fakefx.beans.property.ObjectProperty;
 import com.tungsten.fclcore.fakefx.beans.property.SimpleBooleanProperty;
 import com.tungsten.fclcore.fakefx.beans.property.SimpleIntegerProperty;
 import com.tungsten.fclcore.fakefx.beans.property.SimpleObjectProperty;
+import com.tungsten.fclcore.fakefx.collections.FXCollections;
 import com.tungsten.fclcore.util.Logging;
 import com.tungsten.fclcore.util.io.FileUtils;
 import com.tungsten.fcllibrary.component.FCLActivity;
@@ -59,6 +64,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.UUID;
 import java.util.logging.Level;
 import java.util.stream.Collectors;
 
@@ -200,6 +206,20 @@ public class GameMenu implements MenuCallback, View.OnClickListener {
         return showViewBoundariesProperty.get();
     }
 
+    private final BooleanProperty hideAllViewsProperty = new SimpleBooleanProperty(this, "hideAllViews", false);
+
+    public BooleanProperty hideAllViewsProperty() {
+        return hideAllViewsProperty;
+    }
+
+    public void setHideAllViews(boolean viewVisible) {
+        hideAllViewsProperty.set(viewVisible);
+    }
+
+    public boolean isHideAllViews() {
+        return hideAllViewsProperty.get();
+    }
+
     private final ObjectProperty<Controller> controllerProperty = new SimpleObjectProperty<>(this, "controller", null);
 
     public ObjectProperty<Controller> controllerProperty() {
@@ -224,6 +244,7 @@ public class GameMenu implements MenuCallback, View.OnClickListener {
         viewGroupProperty.set(viewGroup);
     }
 
+    @Nullable
     public ControlViewGroup getViewGroup() {
         return viewGroupProperty.get();
     }
@@ -231,6 +252,7 @@ public class GameMenu implements MenuCallback, View.OnClickListener {
     private void initLeftMenu() {
         FCLSwitch editMode = findViewById(R.id.edit_mode);
         FCLSwitch showViewBoundaries = findViewById(R.id.show_boundary);
+        FCLSwitch hideAllViews = findViewById(R.id.hide_all);
         
         FCLSpinner<Controller> currentControllerSpinner = findViewById(R.id.current_controller);
         FCLSpinner<ControlViewGroup> currentViewGroupSpinner = findViewById(R.id.current_view_group);
@@ -245,6 +267,7 @@ public class GameMenu implements MenuCallback, View.OnClickListener {
         
         FXUtils.bindBoolean(editMode, editModeProperty);
         FXUtils.bindBoolean(showViewBoundaries, showViewBoundariesProperty);
+        FXUtils.bindBoolean(hideAllViews, hideAllViewsProperty);
 
         ArrayList<String> controllerNameList = Controllers.getControllers().stream().map(Controller::getName).collect(Collectors.toCollection(ArrayList::new));
         currentControllerSpinner.setDataList(new ArrayList<>(Controllers.getControllers()));
@@ -254,7 +277,11 @@ public class GameMenu implements MenuCallback, View.OnClickListener {
         FXUtils.bindSelection(currentControllerSpinner, controllerProperty);
 
         refreshViewGroupList(currentViewGroupSpinner);
-        controllerProperty.addListener(invalidate -> refreshViewGroupList(currentViewGroupSpinner));
+        getController().addListener(i -> refreshViewGroupList(currentViewGroupSpinner));
+        controllerProperty.addListener(invalidate -> {
+            refreshViewGroupList(currentViewGroupSpinner);
+            getController().addListener(i -> refreshViewGroupList(currentViewGroupSpinner));
+        });
 
         editLayout.visibilityProperty().bind(editModeProperty);
         
@@ -364,6 +391,9 @@ public class GameMenu implements MenuCallback, View.OnClickListener {
         if (!DirectionStyles.isInitialized()) {
             DirectionStyles.init();
         }
+        if (!QuickInputTexts.isInitialized()) {
+            QuickInputTexts.init();
+        }
 
         if (Files.exists(new File(FCLPath.FILES_DIR + "/menu_setting.json").toPath())) {
             try {
@@ -398,6 +428,7 @@ public class GameMenu implements MenuCallback, View.OnClickListener {
         touchCharInput = findViewById(R.id.input_scanner);
         launchProgress = findViewById(R.id.launch_progress);
         cursorView = findViewById(R.id.cursor);
+
         if (!isSimulated()) {
             baseLayout.setBackground(ThemeEngine.getInstance().getTheme().getBackground(activity));
             launchProgress.setVisibility(View.VISIBLE);
@@ -420,16 +451,18 @@ public class GameMenu implements MenuCallback, View.OnClickListener {
         gyroscope.enableProperty().bind(menuSetting.enableGyroscopeProperty());
 
         viewManager = new ViewManager(this);
-        viewManager.setup();
 
         initLeftMenu();
         initRightMenu();
+
+        viewManager.setup();
     }
 
     @Override
     public View getLayout() {
         if (layout == null) {
             layout = LayoutInflater.from(activity).inflate(R.layout.view_game_menu, null);
+            ((DrawerLayout) layout).setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED);
         }
         return layout;
     }
@@ -472,29 +505,8 @@ public class GameMenu implements MenuCallback, View.OnClickListener {
     }
 
     @Override
-    public void onBackPressed() {
-        boolean mouse = false;
-        final int[] devices = InputDevice.getDeviceIds();
-        for (int j : devices) {
-            InputDevice device = InputDevice.getDevice(j);
-            if (device != null && !device.isVirtual()) {
-                if (device.getName().contains("Mouse") || (touchCharInput != null && !touchCharInput.isEnabled())) {
-                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || device.isExternal()) {
-                        mouse = true;
-                        break;
-                    }
-                }
-            }
-        }
-        if (!mouse) {
-            fclInput.sendKeyEvent(FCLKeycodes.KEY_ESC, true);
-            fclInput.sendKeyEvent(FCLKeycodes.KEY_ESC, false);
-        }
-    }
-
-    @Override
     public void onGraphicOutput() {
-        baseLayout.setBackground(new ColorDrawable(Color.TRANSPARENT));
+        baseLayout.setBackground(null);
         baseLayout.removeView(launchProgress);
     }
 
@@ -517,7 +529,13 @@ public class GameMenu implements MenuCallback, View.OnClickListener {
     @Override
     public void onLog(String log) {
         if (fclBridge != null) {
+            if (log.contains("OR:") || log.contains("ERROR:") || log.contains("INTERNAL ERROR:")) {
+                return;
+            }
             logWindow.appendLog(log);
+            if (BuildConfig.DEBUG) {
+                Log.d("FCL Debug", log);
+            }
             try {
                 if (firstLog) {
                     FileUtils.writeText(new File(fclBridge.getLogPath()), log + "\n");
@@ -533,8 +551,8 @@ public class GameMenu implements MenuCallback, View.OnClickListener {
 
     @Override
     public void onExit(int exitCode) {
-        if (exitCode != 0) {
-            JVMCrashActivity.startCrashActivity(activity, exitCode);
+        if (exitCode != 0 && fclBridge != null) {
+            JVMCrashActivity.startCrashActivity(activity, exitCode, fclBridge.getLogPath(), fclBridge.getRenderer(), fclBridge.getJava());
             Logging.LOG.log(Level.INFO, "JVM crashed, start jvm crash activity to show errors now!");
         }
         android.os.Process.killProcess(android.os.Process.myPid());
@@ -546,26 +564,59 @@ public class GameMenu implements MenuCallback, View.OnClickListener {
     }
 
     public void openQuickInput() {
-
+        QuickInputDialog dialog = new QuickInputDialog(activity, this);
+        dialog.show();
     }
 
     @Override
     public void onClick(View v) {
         if (v == manageViewGroups) {
-
+            ViewGroupDialog dialog = new ViewGroupDialog(getActivity(), this, false, FXCollections.observableList(new ArrayList<>()), null);
+            dialog.show();
         }
         if (v == addButton) {
+            if (getViewGroup() == null) {
+                Toast.makeText(getActivity(), getActivity().getString(R.string.edit_view_no_group), Toast.LENGTH_SHORT).show();
+            } else {
+                EditViewDialog dialog = new EditViewDialog(getActivity(), new ControlButtonData(UUID.randomUUID().toString()), this, new EditViewDialog.Callback() {
+                    @Override
+                    public void onPositive(CustomControl view) {
+                        viewManager.addView(view);
+                    }
 
+                    @Override
+                    public void onClone(CustomControl view) {
+                        // Ignore
+                    }
+                }, false);
+                dialog.show();
+            }
         }
         if (v == addDirection) {
+            if (getViewGroup() == null) {
+                Toast.makeText(getActivity(), getActivity().getString(R.string.edit_view_no_group), Toast.LENGTH_SHORT).show();
+            } else {
+                EditViewDialog dialog = new EditViewDialog(getActivity(), new ControlDirectionData(UUID.randomUUID().toString()), this, new EditViewDialog.Callback() {
+                    @Override
+                    public void onPositive(CustomControl view) {
+                        viewManager.addView(view);
+                    }
 
+                    @Override
+                    public void onClone(CustomControl view) {
+                        // Ignore
+                    }
+                }, false);
+                dialog.show();
+            }
         }
         if (v == manageButtonStyle) {
-            ButtonStyleDialog dialog = new ButtonStyleDialog(getActivity());
+            ButtonStyleDialog dialog = new ButtonStyleDialog(getActivity(), false, null, null);
             dialog.show();
         }
         if (v == manageDirectionStyle) {
-
+            DirectionStyleDialog dialog = new DirectionStyleDialog(getActivity(), false, null, null);
+            dialog.show();
         }
         
         if (v == openMultiplayerMenu) {

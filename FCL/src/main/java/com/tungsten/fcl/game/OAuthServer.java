@@ -5,7 +5,7 @@ import static com.tungsten.fclcore.util.Lang.thread;
 
 import com.tungsten.fcl.R;
 import com.tungsten.fcl.util.AndroidUtils;
-import com.tungsten.fclauncher.FCLPath;
+import com.tungsten.fclauncher.utils.FCLPath;
 import com.tungsten.fclcore.auth.AuthenticationException;
 import com.tungsten.fclcore.auth.OAuth;
 import com.tungsten.fclcore.event.Event;
@@ -18,7 +18,6 @@ import com.tungsten.fclcore.util.io.NetworkUtils;
 import fi.iki.elonen.NanoHTTPD;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -88,7 +87,7 @@ public final class OAuthServer extends NanoHTTPD implements OAuth.Session {
 
         String html;
         try {
-            html = IOUtils.readFullyAsString(OAuthServer.class.getResourceAsStream("/assets/microsoft_auth.html"), StandardCharsets.UTF_8)
+            html = IOUtils.readFullyAsString(OAuthServer.class.getResourceAsStream("/assets/microsoft_auth.html"))
                     .replace("%close-page%", FCLPath.CONTEXT.getString(R.string.account_methods_microsoft_close_page));
         } catch (IOException e) {
             Logging.LOG.log(Level.SEVERE, "Failed to load html");
