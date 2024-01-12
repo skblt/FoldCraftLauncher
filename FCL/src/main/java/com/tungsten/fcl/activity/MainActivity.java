@@ -16,6 +16,7 @@ import androidx.appcompat.widget.LinearLayoutCompat;
 import androidx.constraintlayout.widget.ConstraintLayout;
 
 import com.tungsten.fcl.R;
+import com.tungsten.fcl.game.JarExecutorHelper;
 import com.tungsten.fcl.game.TexturesLoader;
 import com.tungsten.fcl.setting.Accounts;
 import com.tungsten.fcl.setting.ConfigHolder;
@@ -76,6 +77,7 @@ public class MainActivity extends FCLActivity implements FCLMenuView.OnSelectLis
     public FCLMenuView controller;
     public FCLMenuView multiplayer;
     public FCLMenuView setting;
+    public FCLMenuView back;
 
     private LinearLayoutCompat account;
     private FCLImageView avatar;
@@ -85,6 +87,7 @@ public class MainActivity extends FCLActivity implements FCLMenuView.OnSelectLis
     private FCLImageView icon;
     private FCLTextView versionName;
     private FCLTextView versionHint;
+    private FCLButton executeJar;
     private FCLButton launch;
 
     private ObjectProperty<Account> currentAccount;
@@ -164,12 +167,14 @@ public class MainActivity extends FCLActivity implements FCLMenuView.OnSelectLis
             icon = findViewById(R.id.icon);
             versionName = findViewById(R.id.version_name);
             versionHint = findViewById(R.id.version_hint);
+            executeJar = findViewById(R.id.execute_jar);
             launch = findViewById(R.id.launch);
             account.setOnClickListener(this);
             version.setOnClickListener(this);
+            executeJar.setOnClickListener(this);
             launch.setOnClickListener(this);
-            launch.setOnLongClickListener(view ->{
-                startActivity(new Intent(MainActivity.this,ShellActivity.class));
+            launch.setOnLongClickListener(view -> {
+                startActivity(new Intent(MainActivity.this, ShellActivity.class));
                 return true;
             });
 
@@ -182,12 +187,14 @@ public class MainActivity extends FCLActivity implements FCLMenuView.OnSelectLis
                 controller = findViewById(R.id.controller);
                 multiplayer = findViewById(R.id.multiplayer);
                 setting = findViewById(R.id.setting);
+                back = findViewById(R.id.back);
                 home.setOnSelectListener(this);
                 manage.setOnSelectListener(this);
                 download.setOnSelectListener(this);
                 controller.setOnSelectListener(this);
                 multiplayer.setOnSelectListener(this);
                 setting.setOnSelectListener(this);
+                back.setOnClickListener(this);
                 home.setSelected(true);
 
                 setupAccountDisplay();
@@ -297,6 +304,14 @@ public class MainActivity extends FCLActivity implements FCLMenuView.OnSelectLis
             refreshMenuView(null);
             titleView.setTextWithAnim(getString(R.string.version));
             uiManager.switchUI(uiManager.getVersionUI());
+        }
+        if (view == back) {
+            if (uiManager != null) {
+                uiManager.onBackPressed();
+            }
+        }
+        if (view == executeJar) {
+            JarExecutorHelper.start(this, this);
         }
         if (view == launch) {
             Versions.launch(this, Profiles.getSelectedProfile());

@@ -1,4 +1,23 @@
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2020  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package com.tungsten.fclcore.util;
+
+import com.tungsten.fclcore.util.platform.OperatingSystem;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -179,21 +198,92 @@ public final class StringUtils {
     }
 
     public static List<String> tokenize(String str) {
-        if (str == null)
+        if (isBlank(str)) {
             return new ArrayList<>();
-        else
-            return tokenize(str, " \t\n\r\f");
+        } else {
+            // Split the string with ' and space cleverly.
+            ArrayList<String> parts = new ArrayList<>();
+
+            boolean hasValue = false;
+            StringBuilder current = new StringBuilder(str.length());
+            for (int i = 0; i < str.length(); ) {
+                char c = str.charAt(i);
+                if (c == '\'') {
+                    hasValue = true;
+                    int end = str.indexOf(c, i + 1);
+                    if (end < 0) {
+                        end = str.length();
+                    }
+                    current.append(str, i + 1, end);
+                    i = end + 1;
+
+                } else if (c == '"') {
+                    hasValue = true;
+                    i++;
+                    while (i < str.length()) {
+                        c = str.charAt(i++);
+                        if (c == '"') {
+                            break;
+                        } else if (c == '\\' && i < str.length()) {
+                            c = str.charAt(i++);
+                            switch (c) {
+                                case 'n':
+                                    c = '\n';
+                                    break;
+                                case 'r':
+                                    c = '\r';
+                                    break;
+                                case 't':
+                                    c = '\t';
+                                    break;
+                                case 'v':
+                                    c = '\u000b';
+                                    break;
+                                case 'a':
+                                    c = '\u0007';
+                                    break;
+                            }
+                            current.append(c);
+                        } else {
+                            current.append(c);
+                        }
+                    }
+                } else if (c == ' ') {
+                    if (hasValue) {
+                        parts.add(current.toString());
+                        current.setLength(0);
+                        hasValue = false;
+                    }
+                    i++;
+                } else {
+                    hasValue = true;
+                    current.append(c);
+                    i++;
+                }
+            }
+            if (hasValue) {
+                parts.add(current.toString());
+            }
+
+            return parts;
+        }
     }
 
-    public static List<String> tokenize(String str, String delim) {
-        ArrayList<String> result = new ArrayList<>();
-        StringTokenizer tokenizer = new StringTokenizer(str, delim);
-        while (tokenizer.hasMoreTokens()) {
-            delim = tokenizer.nextToken();
-            result.add(delim);
+    public static List<String> parseCommand(String command, Map<String, String> env) {
+        StringBuilder stringBuilder = new StringBuilder(command);
+        for (Map.Entry<String, String> entry : env.entrySet()) {
+            String key = "$" + entry.getKey();
+            int i = 0;
+            while (true) {
+                i = stringBuilder.indexOf(key, i);
+                if (i == -1) {
+                    break;
+                }
+                stringBuilder.replace(i, i + key.length(), entry.getValue());
+            }
         }
 
-        return result;
+        return tokenize(stringBuilder.toString());
     }
 
     public static String parseColorEscapes(String original) {
@@ -255,6 +345,32 @@ public final class StringUtils {
                 return false;
         }
         return true;
+    }
+
+    public static class DynamicCommonSubsequence {
+        private LongestCommonSubsequence calculator;
+
+        public DynamicCommonSubsequence(int intLengthA, int intLengthB) {
+            if (intLengthA > intLengthB) {
+                calculator = new LongestCommonSubsequence(intLengthA, intLengthB);
+            } else {
+                calculator = new LongestCommonSubsequence(intLengthB, intLengthA);
+            }
+        }
+
+        public int calc(CharSequence a, CharSequence b) {
+            if (a.length() < b.length()) {
+                CharSequence t = a;
+                a = b;
+                b = t;
+            }
+
+            if (calculator.maxLengthA < a.length() || calculator.maxLengthB < b.length()) {
+                calculator = new LongestCommonSubsequence(a.length(), b.length());
+            }
+
+            return calculator.calc(a, b);
+        }
     }
 
     /**
